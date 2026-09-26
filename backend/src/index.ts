@@ -8,7 +8,7 @@ import { EmployeeMongoRepository } from './repositories/employee.mongo.repositor
 import { errorMiddleware } from './middlewares/error.middleware.js';
 
 const app = express();
-const port = 3000;
+const port = Number(process.env.PORT) || 3000;
 
 connectDatabase();
 

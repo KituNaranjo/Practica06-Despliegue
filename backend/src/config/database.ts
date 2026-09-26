@@ -2,7 +2,12 @@
 import mongoose from 'mongoose';
 
 export const connectDatabase = async (): Promise<void> => {
-  const MONGO_URI = 'mongodb+srv://kitunaranjo:Teuno2026Mongo@cluster0.e3yfw.mongodb.net/usuarios_db';
+  // La cadena de conexión NUNCA va en el código: se inyecta por variable de entorno
+  const MONGO_URI = process.env.MONGO_URI;
+  if (!MONGO_URI) {
+    console.error('❌ Falta la variable de entorno MONGO_URI');
+    process.exit(1);
+  }
   try {
     await mongoose.connect(MONGO_URI);
     console.log('🔄 [Database]: Conexión exitosa a MongoDB');
@@ -11,4 +16,3 @@ export const connectDatabase = async (): Promise<void> => {
     process.exit(1);
   }
 };
-    

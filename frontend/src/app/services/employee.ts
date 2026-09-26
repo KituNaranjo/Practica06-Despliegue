@@ -14,7 +14,8 @@ export interface Notification {
   text: string;
 }
 
-const API_URL = 'http://localhost:3000/api/v1/empleados';
+// Ruta relativa: en producción Nginx enruta /api al backend; en desarrollo lo hace proxy.conf.json
+const API_URL = '/api/v1/empleados';
 
 @Injectable({
   providedIn: 'root',
