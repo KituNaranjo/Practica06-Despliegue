@@ -1,0 +1,40 @@
+config:
+  target: "http://127.0.0.1:3000"
+  plugins:
+    ensure: {}          # Falla el proceso si no se cumplen los SLA
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      name: "1. Fase de Calentamiento (Tráfico Base)"
+    - duration: 30
+      arrivalRate: 15
+      rampTo: 50
+      name: "2. Fase de Saturación Máxima (Pico de Carga)"
+  ensure:
+    thresholds:
+      - "http.response_time.p99": 200   # 99% de transacciones en < 200 ms
+    maxErrorRate: 1                     # Máx. 1% de caídas del socket HTTP
+
+scenarios:
+  - name: "Inundación transaccional perimetral (Payloads Mixtos Zod)"
+    flow:
+      # Flujo A: Datos correctos -> recorre toda la tubería (Zod -> Controller -> Repository -> MongoDB)
+      - post:
+          url: "/api/v1/empleados"
+          json:
+            nombre: "Andrés Mendoza"
+            cargo: "Software Architect"
+            departamento: "I+D"
+            sueldo: 4200
+          capture:
+            json: "$.data.id"
+            as: "employeeId"
+      - think: 1
+      # Flujo B: Datos corruptos -> rechazo inmediato del DTO Zod (sueldo negativo)
+      - post:
+          url: "/api/v1/empleados"
+          json:
+            nombre: "Al"
+            cargo: "Dev"
+            departamento: "TI"
+            sueldo: -500

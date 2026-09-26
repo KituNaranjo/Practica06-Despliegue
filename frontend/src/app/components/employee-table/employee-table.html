@@ -1,0 +1,27 @@
+<table>
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Cargo</th>
+      <th>Departamento</th>
+      <th>Sueldo</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (emp of employees; track emp.id) {
+      <tr>
+        <td>{{ emp.nombre }}</td>
+        <td>{{ emp.cargo }}</td>
+        <td>{{ emp.departamento }}</td>
+        <td>{{ emp.sueldo }}</td>
+        <td>
+          <button (click)="onEdit(emp)">Editar</button>
+          <button (click)="onDelete(emp.id)">Eliminar</button>
+        </td>
+      </tr>
+    } @empty {
+      <tr><td colspan="5">No hay empleados registrados.</td></tr>
+    }
+  </tbody>
+</table>

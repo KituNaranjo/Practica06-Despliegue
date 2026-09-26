@@ -1,0 +1,19 @@
+<h1>Gestión de Empleados</h1>
+
+@if (notification$ | async; as notification) {
+  <div class="toast" [class.toast-success]="notification.type === 'success'" [class.toast-error]="notification.type === 'error'">
+    {{ notification.text }}
+  </div>
+}
+
+<app-employee-form
+  [employeeToEdit]="employeeToEdit"
+  (save)="handleSave($event)"
+  (cancelEdit)="handleCancelEdit()"
+></app-employee-form>
+
+<app-employee-table
+  [employees]="(employees$ | async) ?? []"
+  (editRequested)="handleEditRequested($event)"
+  (deleteRequested)="handleDeleteRequested($event)"
+></app-employee-table>

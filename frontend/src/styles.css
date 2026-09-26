@@ -1,0 +1,23 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background-color: #f4f6f8;
+  color: #1f2937;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: background-color 0.15s ease;
+}

@@ -1,0 +1,36 @@
+<form [formGroup]="form" (ngSubmit)="onSubmit()">
+  <h3>{{ employeeToEdit ? 'Editar empleado' : 'Nuevo empleado' }}</h3>
+
+  <label>
+    Nombre
+    <input type="text" formControlName="nombre" [class.input-error]="nombreInvalido" />
+    @if (nombreInvalido) {
+      <span class="error-text">El nombre es obligatorio</span>
+    }
+  </label>
+
+  <label>
+    Cargo
+    <input type="text" formControlName="cargo" />
+  </label>
+
+  <label>
+    Departamento
+    <input type="text" formControlName="departamento" />
+  </label>
+
+  <label>
+    Sueldo
+    <input type="number" min="0" formControlName="sueldo" [class.input-error]="sueldoInvalido" />
+    @if (sueldoInvalido) {
+      <span class="error-text">El sueldo debe ser mayor a 0</span>
+    }
+  </label>
+
+  <div class="actions">
+    <button type="submit">{{ employeeToEdit ? 'Actualizar' : 'Crear' }}</button>
+    @if (employeeToEdit) {
+      <button type="button" (click)="onCancel()">Cancelar</button>
+    }
+  </div>
+</form>
