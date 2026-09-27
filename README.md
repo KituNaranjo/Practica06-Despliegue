@@ -1,4 +1,4 @@
-# practica 06 - Despliegue
+# Practica 06 - Despliegue
 # Gestión de Empleados Stack MEAN en Producción (AWS · Nginx · PM2)
 
 Aplicación CRUD de gestión de personal construida sobre el Stack MEAN (MongoDB, Express, Angular, Node.js) con TypeScript, refactorizada con patrones de diseño, evaluada con pruebas unitarias y de estrés, y desplegada en producción sobre AWS EC2.
