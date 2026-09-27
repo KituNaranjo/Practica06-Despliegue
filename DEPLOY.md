@@ -1,4 +1,4 @@
-# Práctica 06 — Despliegue en AWS EC2 con Nginx y PM2
+# Práctica 06: Despliegue en AWS EC2 con Nginx y PM2
 
 Adaptación de la guía PDA06 al proyecto MEAN de Gestión de Empleados (backend Express + TypeScript, frontend Angular 22, MongoDB Atlas).
 
@@ -184,23 +184,33 @@ pm2 save
 
 ## Fase 6 — Monitoreo y alertas (en el servidor)
 
-### 6.1 Webhook
+### 6.1 Webhook de Discord
 
-Slack → Incoming WebHooks → canal `#alertas-servidor` → copiar URL (o Discord → Canal → Integraciones → Webhooks).
+Discord → servidor → canal `#alertas-servidor` → ⚙️ Editar canal → Integraciones → Webhooks → Nuevo webhook → **Copiar URL del webhook**.
 
-### 6.2 Notificaciones (según la guía)
+> La URL del webhook funciona como una contraseña: no la subas al repositorio ni la muestres en capturas.
+
+### 6.2 Notificaciones con pm2-discord
+
+> La guía propone `pm2-notify`, pero ese paquete es un notificador **SMTP** y no admite `discordUrl` ni `slackUrl`: la alerta nunca llega. Se usa el módulo `pm2-discord` (o `pm2-slack` con `slack_url`).
 
 ```bash
-sudo npm install pm2-notify -g
-pm2 set pm2-notify:slackUrl "URL_DE_TU_WEBHOOK"
-# pm2 set pm2-notify:discordUrl "URL_DE_TU_WEBHOOK"
-pm2 set pm2-notify:events "error,exit"
-pm2 set pm2-notify:apps "mi-node-app"
-pm2 save --force
-pm2 logs pm2-notify
+pm2 install pm2-discord
+pm2 set pm2-discord:discord_url "URL_DE_TU_WEBHOOK"
+pm2 set pm2-discord:process_name mi-node-app
+pm2 set pm2-discord:stop true
+pm2 set pm2-discord:exit true
+pm2 set pm2-discord:restart true
+pm2 set pm2-discord:exception true
+pm2 set pm2-discord:online true
+# Opcional: enviar también el log HTTP (morgan), agrupado cada 2 s
+pm2 set pm2-discord:log true
+pm2 set pm2-discord:buffer true
+pm2 set pm2-discord:buffer_seconds 2
+pm2 save
 ```
 
-> Si con esto no llega la alerta al hacer `pm2 stop`, usa el módulo PM2 dedicado (`pm2 install pm2-slack` o `pm2 install pm2-discord`) y configura su URL según su README. Documenta en el informe cuál funcionó.
+Al instalarlo sin URL el módulo falla y se reinicia varias veces hasta que se configura `discord_url`; es normal. Para limpiar esos errores: `pm2 flush pm2-discord`.
 
 ### 6.3 Rotación de logs
 
@@ -208,6 +218,63 @@ pm2 logs pm2-notify
 pm2 install pm2-logrotate
 pm2 set pm2-logrotate:max_size 10M
 pm2 set pm2-logrotate:retain 7
+```
+
+---
+
+## Fase 7 — Dominio y HTTPS (recomendación de la guía)
+
+### 7.1 Subdominio gratuito
+En https://www.duckdns.org crea un subdominio y en **current ip** escribe la IP elástica (no la de tu PC) → **update ip**. Verifica:
+
+```bash
+nslookup TU_SUBDOMINIO.duckdns.org
+```
+
+### 7.2 Certificado de Let's Encrypt (en el servidor)
+```bash
+DOMINIO=TU_SUBDOMINIO.duckdns.org
+sudo sed -i "s/server_name _;/server_name $DOMINIO;/" /etc/nginx/sites-available/default
+sudo nginx -t && sudo systemctl reload nginx
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d $DOMINIO --redirect --agree-tos -m TU_CORREO --no-eff-email -n
+sudo certbot renew --dry-run
+```
+
+### 7.3 Mantener también el acceso por IP
+Certbot deja un bloque `return 404` para cualquier host distinto del dominio, así que `http://IP` deja de funcionar. Para conservar la Prueba de Red se reorganiza Nginx en tres bloques: la IP por HTTP sirve la app, el dominio por HTTP redirige a HTTPS y el dominio por HTTPS sirve la app. La parte común va en `/etc/nginx/snippets/empleados-app.conf` (el `root` y los tres `location` de `deploy/nginx-empleados.conf`).
+
+```nginx
+upstream empleados_api { server 127.0.0.1:3000; keepalive 16; }
+
+server {                      # IP directa por HTTP
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    include snippets/empleados-app.conf;
+}
+
+server {                      # dominio por HTTP -> HTTPS
+    listen 80;
+    listen [::]:80;
+    server_name TU_SUBDOMINIO.duckdns.org;
+    return 301 https://$host$request_uri;
+}
+
+server {                      # dominio por HTTPS
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name TU_SUBDOMINIO.duckdns.org;
+    ssl_certificate /etc/letsencrypt/live/TU_SUBDOMINIO.duckdns.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/TU_SUBDOMINIO.duckdns.org/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    include snippets/empleados-app.conf;
+}
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx && sudo certbot renew --dry-run
 ```
 
 ---
@@ -253,3 +320,6 @@ Refresca el navegador sin tocar la consola de AWS.
 | 403/404 en `/` | `ls /var/www/empleados-app/current/frontend/dist/frontend/browser` |
 | `Permission denied (publickey)` en deploy | Ruta `key` en `ecosystem.config.cjs`; deploy key en GitHub |
 | Error de Node al compilar Angular | `node -v` ≥ 24.15 |
+| SSH `Connection timed out` con la regla aparentemente correcta | Algunos ISP usan una IP de salida distinta para SSH. Crea un VPC Flow Log (filtro *Rechazar*) sobre la interfaz de la instancia, reintenta y agrega como regla 22 la IP de origen que aparezca con destino al puerto 22 |
+| Nombre del grupo de seguridad rechazado | AWS no permite nombres que empiecen con `sg-` |
+| `http://IP` devuelve 404 después de Certbot | Ver 7.3 |
