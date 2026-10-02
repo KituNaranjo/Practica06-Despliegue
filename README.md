@@ -1,7 +1,7 @@
 # Practica 06 - Despliegue
-# Gestión de Empleados Stack MEAN en Producción (AWS · Nginx · PM2)
+# Gestión de Empleados Stack MEAN en Producción (AWS · Azure · Nginx · PM2)
 
-Aplicación CRUD de gestión de personal construida sobre el Stack MEAN (MongoDB, Express, Angular, Node.js) con TypeScript, refactorizada con patrones de diseño, evaluada con pruebas unitarias y de estrés, y desplegada en producción sobre AWS EC2.
+Aplicación CRUD de gestión de personal construida sobre el Stack MEAN (MongoDB, Express, Angular, Node.js) con TypeScript, refactorizada con patrones de diseño, evaluada con pruebas unitarias y de estrés, y desplegada en producción sobre AWS EC2 y Microsoft Azure (VM), ambos conectados al mismo cluster de MongoDB Atlas.
 
 **Asignatura:** Patrones de Diseño de APIs — Maestría en Ingeniería de Software (UPS)
 **Docente:** Ing. Patsy Prieto, MSc.
@@ -9,17 +9,18 @@ Aplicación CRUD de gestión de personal construida sobre el Stack MEAN (MongoDB
 ![Node](https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white)
 ![Angular](https://img.shields.io/badge/Angular-22-DD0031?logo=angular&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-EC2-FF9900?logo=amazonaws&logoColor=white)
+![Azure](https://img.shields.io/badge/Azure-VM-0078D4?logo=microsoftazure&logoColor=white)
 ![Nginx](https://img.shields.io/badge/Nginx-1.24-009639?logo=nginx&logoColor=white)
 ![PM2](https://img.shields.io/badge/PM2-cluster-2B037A?logo=pm2&logoColor=white)
 ![HTTPS](https://img.shields.io/badge/HTTPS-Let's%20Encrypt-003A70?logo=letsencrypt&logoColor=white)
 
 ## 🌐 En producción
 
-| Recurso | URL |
-|---|---|
-| Aplicación (HTTPS) | https://gestionempleadoscn.duckdns.org |
-| API REST | https://gestionempleadoscn.duckdns.org/api/v1/empleados |
-| Acceso directo por IP (HTTP) | http://18.220.70.44 |
+| Recurso | AWS EC2 | Azure VM |
+|---|---|---|
+| Aplicación (HTTPS) | https://gestionempleadoscn.duckdns.org | https://empleados-azure-cn.duckdns.org |
+| API REST | https://gestionempleadoscn.duckdns.org/api/v1/empleados | https://empleados-azure-cn.duckdns.org/api/v1/empleados |
+| Acceso directo por IP (HTTP) | http://18.220.70.44 | http://57.156.68.131 |
 
 ---
 
@@ -30,6 +31,7 @@ Aplicación CRUD de gestión de personal construida sobre el Stack MEAN (MongoDB
 | 03 | Refactorización con patrones de diseño (Repository, DTO + Zod, Response Wrapper, RxJS, Smart/Dumb) | Este README |
 | 05 | Atributos de calidad ISO/IEC 25010: pruebas unitarias (Jest) y de estrés (Artillery) | [`ANALISIS-PRUEBAS.md`](ANALISIS-PRUEBAS.md) |
 | 06 | Despliegue en producción con AWS EC2, Nginx, PM2, CI/CD y alertas | [`DEPLOY.md`](DEPLOY.md) |
+| 06 (Azure) | Réplica del despliegue en una VM de Microsoft Azure con el mismo flujo de CI/CD | [`DEPLOY-AZURE.md`](DEPLOY-AZURE.md) |
 
 ---
 
@@ -39,6 +41,8 @@ Aplicación CRUD de gestión de personal construida sobre el Stack MEAN (MongoDB
 flowchart LR
     U[Usuario<br/>Navegador] -->|:80 / :443| N
 
+    U -->|:80 / :443| NZ
+
     subgraph EC2 [AWS EC2 · Ubuntu 24.04 · t3.micro · IP elástica]
         N[Nginx<br/>Angular estático<br/>TLS Let's Encrypt] -->|/api → 127.0.0.1:3000| P
         subgraph P [PM2 · modo clúster]
@@ -47,18 +51,30 @@ flowchart LR
         end
     end
 
+    subgraph AZ [Azure VM · Ubuntu 24.04 · B2ats v2 · IP estática]
+        NZ[Nginx<br/>Angular estático<br/>TLS Let's Encrypt] -->|/api → 127.0.0.1:3000| PZ
+        subgraph PZ [PM2 · modo clúster]
+            Z0[mi-node-app #0]
+            Z1[mi-node-app #1]
+        end
+    end
+
     P -->|TLS| M[(MongoDB Atlas)]
+    PZ -->|TLS| M
     P -.->|eventos| D[Discord<br/>#alertas-servidor]
+    PZ -.->|eventos| D
 
     DEV[PC del desarrollador] -->|git push| GH[GitHub]
-    DEV -->|pm2 deploy · SSH| EC2
+    DEV -->|pm2 deploy production · SSH| EC2
+    DEV -->|pm2 deploy azure · SSH| AZ
     GH -->|git pull · deploy key| EC2
+    GH -->|git pull · deploy key| AZ
 ```
 
 - **Nginx** recibe todo el tráfico público, sirve el build de Angular directamente desde disco y reenvía solo `/api/` al backend.
-- **PM2** ejecuta el backend en modo clúster (una réplica por vCPU), lo recupera ante fallos y lo relanza al reiniciar el servidor (`pm2 startup` + systemd).
-- **El puerto 3000 nunca se expone:** el grupo de seguridad solo abre 80/443 al público y 22 a las IP del administrador.
-- **MongoDB Atlas** está fuera de la instancia y solo acepta conexiones desde la IP elástica.
+- **PM2** ejecuta el backend en modo clúster (una réplica por vCPU), lo recupera ante fallos y lo relanza al reiniciar el servidor (`pm2 startup` + systemd). En Azure, la B2ats v2 también tiene 2 vCPU, así que corren 2 réplicas.
+- **El puerto 3000 nunca se expone:** el Security Group (AWS) y el Network Security Group (Azure) solo abren 80/443 al público y 22 para administración.
+- **MongoDB Atlas** está fuera de la instancia y solo acepta conexiones desde la IP elástica de EC2 y la IP estática de la VM de Azure.
 - **Discord** recibe en tiempo real los eventos de PM2 (stop, exit, restart, online, reload) y el log HTTP.
 
 ---
@@ -128,27 +144,28 @@ cd frontend && npm run build               # genera dist/frontend/browser
 
 ## 🚀 Despliegue
 
-El procedimiento completo, paso a paso, está en [`DEPLOY.md`](DEPLOY.md). Resumen del flujo de CI/CD una vez configurado el servidor:
+El procedimiento completo, paso a paso, está en [`DEPLOY.md`](DEPLOY.md) (AWS EC2) y [`DEPLOY-AZURE.md`](DEPLOY-AZURE.md) (Azure VM). Resumen del flujo de CI/CD una vez configurado el servidor:
 
 ```bash
 # Desde la PC del desarrollador (Git Bash; no funciona en PowerShell)
 git push origin main
-pm2 deploy ecosystem.config.cjs production
+pm2 deploy ecosystem.config.cjs production   # AWS EC2
+pm2 deploy ecosystem.config.cjs azure        # Azure VM
 ```
 
-PM2 se conecta por SSH a la EC2, descarga el último commit, ejecuta `npm ci` + `build` en backend y frontend, y recarga las réplicas **sin tiempo de inactividad** (`pm2 startOrReload`).
+PM2 se conecta por SSH al servidor elegido, descarga el último commit, ejecuta `npm ci` + `build` en backend y frontend, y recarga las réplicas **sin tiempo de inactividad** (`pm2 startOrReload`).
 
 | Archivo | Propósito |
 |---|---|
-| [`ecosystem.config.cjs`](ecosystem.config.cjs) | Procesos PM2 (clúster, logs, `--env-file`) y destino del despliegue |
+| [`ecosystem.config.cjs`](ecosystem.config.cjs) | Procesos PM2 (clúster, logs, `--env-file`) y destinos del despliegue (`production` = EC2, `azure` = Azure VM) |
 | [`deploy/nginx-empleados.conf`](deploy/nginx-empleados.conf) | Proxy inverso de `/api` y servicio del build de Angular |
 | `backend/tsconfig.build.json` | Compilación de producción de TypeScript |
 | `backend/.env.example` | Plantilla de variables de entorno |
 
 ### Seguridad del despliegue
 - Secretos en `/var/www/empleados-app/shared/.env` del servidor (permisos `600`), inyectados por PM2 con `--env-file`; nunca en el repositorio.
-- Deploy key de GitHub de **solo lectura**.
-- Grupo de seguridad con 80/443 públicos, 22 restringido y 3000 cerrado; UFW como segunda capa.
+- Deploy key de GitHub de **solo lectura**, una por servidor.
+- Security Group (AWS) / NSG (Azure) con 80/443 públicos y 3000 cerrado; UFW como segunda capa en ambos servidores.
 - HTTPS con certificado de Let's Encrypt y renovación automática (Certbot).
 - `pm2-logrotate` (10 MB por archivo, 7 archivos) para evitar que los logs llenen el disco.
 
@@ -211,7 +228,8 @@ Formato de error:
 │   └── nginx-empleados.conf
 ├── ecosystem.config.cjs
 ├── ANALISIS-PRUEBAS.md      # Práctica 05
-├── DEPLOY.md                # Práctica 06
+├── DEPLOY.md                # Práctica 06 (AWS EC2)
+├── DEPLOY-AZURE.md          # Práctica 06 (Azure VM)
 └── README.md
 ```
 
