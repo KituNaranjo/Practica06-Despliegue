@@ -1,8 +1,13 @@
-// ecosystem.config.cjs — PM2 (Práctica 06: Despliegue en AWS con Nginx y PM2)
+// ecosystem.config.cjs — PM2 (Práctica 06: Despliegue en AWS y Azure con Nginx y PM2)
 // Extensión .cjs porque el backend usa "type": "module".
 // Los secretos NO van aquí: se leen de /var/www/empleados-app/shared/.env (fuera del repo).
 
 const APP_DIR = '/var/www/empleados-app';
+
+const POST_DEPLOY =
+  'cd backend && npm ci && npm run build' +
+  ' && cd ../frontend && npm ci && npm run build' +
+  ' && cd .. && pm2 startOrReload ecosystem.config.cjs && pm2 save';
 
 module.exports = {
   apps: [
@@ -25,6 +30,7 @@ module.exports = {
   ],
 
   deploy: {
+    // AWS EC2
     production: {
       user: 'ubuntu',
       host: ['18.220.70.44'],
@@ -32,10 +38,17 @@ module.exports = {
       ref: 'origin/main',
       repo: 'git@github.com:KituNaranjo/Practica06-Despliegue.git',
       path: APP_DIR,
-      'post-deploy':
-        'cd backend && npm ci && npm run build' +
-        ' && cd ../frontend && npm ci && npm run build' +
-        ' && cd .. && pm2 startOrReload ecosystem.config.cjs && pm2 save',
+      'post-deploy': POST_DEPLOY,
+    },
+    // Azure VM
+    azure: {
+      user: 'azureuser',
+      host: ['57.156.68.131'],
+      key: '~/.ssh/empleados-app-azure_key.pem',
+      ref: 'origin/main',
+      repo: 'git@github.com:KituNaranjo/Practica06-Despliegue.git',
+      path: APP_DIR,
+      'post-deploy': POST_DEPLOY,
     },
   },
 };
